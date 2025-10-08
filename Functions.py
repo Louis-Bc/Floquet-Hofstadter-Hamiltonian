@@ -6,28 +6,46 @@ from scipy.linalg import expm
 
 # The following functions find the energy eigenvalues for Hamiltonians in a real space basis.
 
-def basis(x, y, size):
+def phase(m, n, N, Phi):
     """
-    Takes in a point (x,y) and returns a basis vector associated with that point.
+    Returns the nearest neighbor and next-nearest neighbor hopping phases accrued by an electron when hopping from atomic site (m,n).
     
     Parameters
     ----------
-    x : int
-        The x-coordinate of a site on an N by N square lattice in units of the lattice parameter a.
-    y : int
-        The y-coordinate of a site on an N by N square lattice in units of the lattice parameter a.
-    size : int
+    m : int
+        
+    alpha : float
+        A dimensionless measure of the magnetic flux through a unit cell of the lattice; must be a
+        rational number for this model to be accurate.
+    N : float, optional
         The number of atoms along each side of the square lattice.
-    
+    Phi : float, optional
+        Phase accrued along a closed loop around the edge of a lattice unit cell, written in terms of the dimensionless flux per plaquette alpha.
+          
     Returns
     -------
-    list
-        The column of a size by size identity matrix representing the point (x,y) in a new basis.
+    tuple
+        A two-element tuple containing 2d numpy arrays which give the nearest and next-nearest neighbor hopping phases.
     """
-    r = np.identity(size**2)[:, size*y+x]
-    return r
+    if 0 < n < N-1:                                                          # In the bulk
+        phase_nn = np.exp(np.array([-1j*Phi*n, 0]))                          # first element: hopping to the right; second element: hopping up
+        phase_nnn = np.exp(np.array([-1j*(2*n+1)*Phi/2, -1j*(2*n-1)*Phi/2])) # first element: hopping diagonally up and to the right; second element: hopping diagonally down and to the right
+    elif n == 0:                                                             # Periodic boundary condition at the bottom of the lattice
+        phase_nn = np.exp(np.array([-1j*Phi*n, 0]))
+        if m < N-1:
+            phase_nnn = np.exp(np.array([-1j*(2*n+1)*Phi/2, 1j*(1-2*N*(m+1))*Phi/2]))
+        else:
+            phase_nnn = np.exp(np.array([-1j*(2*n+1)*Phi/2, 1j*(1-2*N**2)*Phi/2]))
+    elif n == N-1:                                                           # Periodic boundary condition at the top of the lattice
+        phase_nn = np.exp(np.array([-1j*Phi*n, 1j*Phi*N*m]))
+        if m < N-1:
+            phase_nnn = np.exp(np.array([1j*(1+2*N*m)*Phi/2, 1j*(3-2*N)*Phi/2]))
+        else:
+            phase_nnn = np.exp(np.array([1j*(1-2*N)*Phi/2, 1j*(3-2*N)*Phi/2]))
+    
+    return(phase_nn, phase_nnn)
 
-def H_real(size, alpha, t_nn = 1, t_nnn = 0.2, hop = 'nn', E_0 = 0):
+def H_real(size, alpha, t_nn = 1, t_nnn = 0.2, E_0 = 0):
     """
     Returns the single particle energy eigenvalues of the tight-binding Hamiltonian in real space for a 
     size by size square lattice subject to a perpendicular magnetic field.
@@ -47,10 +65,6 @@ def H_real(size, alpha, t_nn = 1, t_nnn = 0.2, hop = 'nn', E_0 = 0):
         The next-nearest neighbor hopping integral, providing a measure for how likely an electron on 
         the lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in should be 
         between 0 and 1.
-    hop : str, optional
-        Should be either 'nn' to specify that only nearest neighbor hopping should be included or 'nnn' 
-        to specify that both nearest and next-nearest neighbor hopping should be included. Defaults to
-        'nn'.
     E_0 : float, optional
         The chemical potential energy associated with each site on the lattice. Defaults to 0.
         
@@ -60,80 +74,43 @@ def H_real(size, alpha, t_nn = 1, t_nnn = 0.2, hop = 'nn', E_0 = 0):
         A one dimensional numpy array containing the energy eigenvalues of the Hamiltonian.
     """
     Phi = 2*np.pi*alpha
-    H_hop = np.zeros([size**2, size**2], dtype=np.complex128)
-    H_stat = E_0*np.identity(size**2)
-    
-    if hop == 'nn':
-        for n in range(size):
-            for m in range(size):
-                if m<size-1 and n<size-1:
-                    #if not on edges, hopping is normal and periodic boundary conditions do not have to be applied
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(m+1,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,n+1,size)))
-                elif m==size-1 and n<size-1: 
-                    #if at the right edge, but not on the corner, hopping right loops back to x=0 and hopping up is normal
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(0,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,n+1,size)))
-                elif n==size-1 and m<size-1:
-                    #if at the top edge, but not on the corner, hopping right is normal and hopping up loops back to x=0
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(m+1,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,0,size))*np.exp(1j*Phi*size*m))
-                elif m==size-1 and n==size-1:
-                    #if on corner, hopping right loops back to x=0 and hopping up loops back to y=0
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(0,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,0,size))*np.exp(1j*Phi*size*m))
+    H = E_0*np.identity(N**2, dtype=np.complex128)
 
-    if hop == 'nnn':
-        for n in range(size):
-            for m in range(size):
-                if m<size-1 and 0<n<size-1:
-                    #if not on edges, hopping is normal and periodic boundary conditions do not have to be applied
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(m+1,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,n+1,size)))
-                    #next-nearest neighbor hopping
-                    H_hop += t_nnn*(np.outer(basis(m,n,size), basis(m+1,n+1,size))*np.exp(-1j*(2*n+1)*Phi/2) + 
-                                    np.outer(basis(m,n,size), basis(m+1,n-1,size))*np.exp(-1j*(2*n-1)*Phi/2))
-                elif m==size-1 and 0<n<size-1: 
-                    #if at the right edge, but not on the corner, hopping right loops back to x=0 and hopping up is normal
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(0,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,n+1,size)))
-                    #next-nearest neighbor hopping
-                    H_hop += t_nnn*(np.outer(basis(m,n,size), basis(0,n+1,size))*np.exp(-1j*(2*n+1)*Phi/2) + 
-                                    np.outer(basis(m,n,size), basis(0,n-1,size))*np.exp(-1j*(2*n-1)*Phi/2))
-                elif n==0 and m<size-1:
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(m+1,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,n+1,size)))
-                    #next-nearest neighbor hopping
-                    H_hop += t_nnn*(np.outer(basis(m,n,size), basis(m+1,n+1,size))*np.exp(-1j*(2*n+1)*Phi/2) + 
-                                    np.outer(basis(m,n,size), basis(m+1,size-1,size))*np.exp(1j*(1-2*size-2*size*m)*Phi/2))
-                elif n==0 and m==size-1:
-                    #if at the right edge, but not on the corner, hopping right loops back to x=0 and hopping up is normal
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(0,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,n+1,size)))
-                    #next-nearest neighbor hopping
-                    H_hop += t_nnn*(np.outer(basis(m,n,size), basis(0,n+1,size))*np.exp(-1j*(2*n+1)*Phi/2) + 
-                                    np.outer(basis(m,n,size), basis(0,size-1,size))*np.exp(1j*(1-2*size**2)*Phi/2))
-                elif n==size-1 and m<size-1:
-                    #if at the top edge, but not on the corner, hopping right is normal and hopping up loops back to x=0
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(m+1,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,0,size))*np.exp(1j*Phi*size*m))
-                    #next-nearest neighbor hopping
-                    H_hop += t_nnn*(np.outer(basis(m,n,size), basis(m+1,0,size))*np.exp(1j*(1+2*size*m)*Phi/2) + 
-                                    np.outer(basis(m,n,size), basis(m+1,n-1,size))*np.exp(1j*(3-2*size)*Phi/2))
-                elif m==size-1 and n==size-1:
-                    #if on corner, hopping right loops back to x=0 and hopping up loops back to y=0
-                    H_hop += t_nn*(np.outer(basis(m,n,size), basis(0,n,size))*np.exp(-1j*Phi*n) + 
-                                   np.outer(basis(m,n,size), basis(m,0,size))*np.exp(1j*Phi*size*m))
-                    #next-nearest neighbor hopping
-                    H_hop += t_nnn*(np.outer(basis(m,n,size), basis(0,0,size))*np.exp(1j*(1-2*size)*Phi/2) + 
-                                    np.outer(basis(m,n,size), basis(0,n-1,size))*np.exp(1j*(3-2*size)*Phi/2))
+    for n in range(N):
+        for m in range(N):
+            i = n*N + m
+
+            m_hop = (m + 1) % N      # nearest neighbor hopping coordinate values needed for upper right diagonal of H with periodic boundary conditions
+            n_up = (n + 1) % N
+            n_down = (n - 1) % N
+
+            j_x = n*N + m_hop        # right neighbor
+            j_y = n_up*N + m         # upward neighbor
+            j_xy = n_up*N + m_hop    # diagonal up-right
+            j_xyd = n_down*N + m_hop # diagonal down-right
+
+            phase_nn, phase_nnn = phase(m, n, N, Phi)
+
+            # Nearest neighbor hoppings
+            H[i, j_x] += -t_nn * phase_nn[0]
+            H[j_x, i] += -t_nn * np.conj(phase_nn[0])
+
+            H[i, j_y] += -t_nn * phase_nn[1]
+            H[j_y, i] += -t_nn * np.conj(phase_nn[1])
+
+            # Next-nearest neighbor hoppings
+            if t_nnn != 0:
+                H[i, j_xy] += -t_nnn * phase_nnn[0]
+                H[j_xy, i] += -t_nnn * np.conj(phase_nnn[0])
+
+                H[i, j_xyd] += -t_nnn * phase_nnn[1]
+                H[j_xyd, i] += -t_nnn * np.conj(phase_nnn[1])
                 
-    H = H_stat - H_hop - np.transpose(np.conjugate(H_hop))
     eigenvalues, eigenvectors = np.linalg.eigh(H)
-    energies = eigenvalues
-    return(energies)
+    
+    return(eigenvalues)
 
-def H_k(k_x, k_y, q, p = 1, hop = 'nn', t_nn = 1, t_nnn = 0.2):
+def H_k(k_x, k_y, q, p = 1, t_nn = 1, t_nnn = 0.2):
     """
         Outputs the energy eigenvalues and eigenvectors of the q-dimensional Hamiltonian in the k-space 
         basis.
@@ -151,10 +128,6 @@ def H_k(k_x, k_y, q, p = 1, hop = 'nn', t_nn = 1, t_nnn = 0.2):
             the Hamiltonian in the k-space basis.
         p : int, optional
             The numerator of the dimensionless measure of magnetic flux alpha. Defaults to 1
-        hop : str, optional
-            Should be either 'nn' to specify that only nearest neighbor hopping should be included or 
-            'nnn' to specify that both nearest and next-nearest neighbor hopping should be included. 
-            Defaults to 'nn'.
         t_nn : float, optional
             The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
             lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
@@ -179,48 +152,26 @@ def H_k(k_x, k_y, q, p = 1, hop = 'nn', t_nn = 1, t_nnn = 0.2):
             sign = 1
         elif q == -2:
             sign = -1
-        if hop == 'nn':
-            H[0, 0] = -2*t_nn*np.cos(k_x)
-            H[1, 1] = 2*t_nn*np.cos(k_x)
-            H[0, 1] = -2*t_nn*np.cos(k_y)
-            H[1, 0] = -2*t_nn*np.cos(k_y)
-        elif hop == 'nnn':
-            H[0, 0] = -2*t_nn*np.cos(k_x)
-            H[1, 1] = 2*t_nn*np.cos(k_x)
-            H[0, 1] = -2*(t_nn*np.cos(k_y) + 1j*2*sign*t_nnn*np.sin(k_x)*np.sin(k_y))
-            H[1, 0] = -2*(t_nn*np.cos(k_y) - 1j*2*sign*t_nnn*np.sin(k_x)*np.sin(k_y))
+        H[0, 0] = -2*t_nn*np.cos(k_x)
+        H[1, 1] = 2*t_nn*np.cos(k_x)
+        H[0, 1] = -2*(t_nn*np.cos(k_y) + 1j*2*sign*t_nnn*np.sin(k_x)*np.sin(k_y))
+        H[1, 0] = -2*(t_nn*np.cos(k_y) - 1j*2*sign*t_nnn*np.sin(k_x)*np.sin(k_y))
     else:
-        if hop == 'nn':
-            for i in range(abs(q)):
-                H[i, i] = -2*t_nn*np.cos(k_x - Phi*i)
-                if i==0:
-                    H[i, i+1] = -t_nn*np.exp(1j*k_y)
-                    H[i, abs(q)-1] = -t_nn*np.exp(-1j*k_y)
-                elif i==abs(q)-1:
-                    H[i, i-1] = -t_nn*np.exp(-1j*k_y)
-                    H[i, 0] = -t_nn*np.exp(1j*k_y)
-                else:
-                    H[i, i+1] = -t_nn*np.exp(1j*k_y)
-                    H[i, i-1] = -t_nn*np.exp(-1j*k_y)
-            eigenvalues, eigenvectors = np.linalg.eigh(H)
-            return(eigenvalues, eigenvectors)
-        
-        elif hop == 'nnn':
-            for i in range(abs(q)):
-                H[i, i] = -2*t_nn*np.cos(k_x - Phi*i)
-                if i==0:
-                    H[i, i+1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
-                    H[i, abs(q)-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(abs(q)-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
-                elif i==abs(q)-1:
-                    H[i, i-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(i-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
-                    H[i, 0] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
-                else:
-                    H[i, i+1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
-                    H[i, i-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(i-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
+        for i in range(abs(q)):
+            H[i, i] = -2*t_nn*np.cos(k_x - Phi*i)
+            if i==0:
+                H[i, i+1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
+                H[i, abs(q)-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(abs(q)-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
+            elif i==abs(q)-1:
+                H[i, i-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(i-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
+                H[i, 0] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
+            else:
+                H[i, i+1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
+                H[i, i-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(i-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
         eigenvalues, eigenvectors = np.linalg.eigh(H)
         return(eigenvalues, eigenvectors)
     
-def h_k_reduced(k_x, k_y, q_test, q_bands, hop = 'nn', p_test=1, t_nn=1, t_nnn=0.2):
+def h_k_reduced(k_x, k_y, q_test, q_bands, p_test=1, t_nn=1, t_nnn=0.2):
     ''' 
         Returns a q_bands by q_bands matrix representing the Hamiltonian for a constant flux per plaquette of p/q
     
@@ -237,10 +188,6 @@ def h_k_reduced(k_x, k_y, q_test, q_bands, hop = 'nn', p_test=1, t_nn=1, t_nnn=0
             q_bands : int
                 The size of the Floquet Hamiltonian for flux switching between p_test/q_test and another flux p/q; q_bands is 
                 given by lcm(q_test, q) if q_test and q are incommensurate or max(q_test, q) if they are commensurate.
-            hop : str, optional
-                Should be either 'nn' to specify that only nearest neighbor hopping should be included or 
-                'nnn' to specify that both nearest and next-nearest neighbor hopping should be included. 
-                Defaults to 'nn'.
             p_test : int, optional
                 The numerator of the dimensionless measure of static magnetic flux per unit cell alpha. Default value is set to 1.
             t_nn : float, optional
@@ -261,49 +208,29 @@ def h_k_reduced(k_x, k_y, q_test, q_bands, hop = 'nn', p_test=1, t_nn=1, t_nnn=0
     '''
     
     H = np.zeros([q_bands,q_bands], dtype=np.complex128)
-    Phi = 2*np.pi/q_test
+    Phi = 2*np.pi*p_test/q_test
     
     if q_test == 2 or q_test == -2:
         if q_test == 2:
             sign = 1
         elif q_test == -2:
             sign = -1
-        if hop == 'nn':
-            H[0, 0] = -2*t_nn*np.cos(k_x)
-            H[1, 1] = 2*t_nn*np.cos(k_x)
-            H[0, 1] = -2*t_nn*np.cos(k_y)
-            H[1, 0] = -2*t_nn*np.cos(k_y)
-        elif hop == 'nnn':
-            H[0, 0] = -2*t_nn*np.cos(k_x)
-            H[1, 1] = 2*t_nn*np.cos(k_x)
-            H[0, 1] = -2*(t_nn*np.cos(k_y) + 1j*2*sign*t_nnn*np.sin(k_x)*np.sin(k_y))
-            H[1, 0] = -2*(t_nn*np.cos(k_y) - 1j*2*sign*t_nnn*np.sin(k_x)*np.sin(k_y))
+        H[0, 0] = -2*t_nn*np.cos(k_x)
+        H[1, 1] = 2*t_nn*np.cos(k_x)
+        H[0, 1] = -2*(t_nn*np.cos(k_y) + 1j*2*sign*t_nnn*np.sin(k_x)*np.sin(k_y))
+        H[1, 0] = -2*(t_nn*np.cos(k_y) - 1j*2*sign*t_nnn*np.sin(k_x)*np.sin(k_y))
     else:
-        if hop == 'nn':    
-            for i in range(abs(q_bands)):
-                H[i, i] = -2*t_nn*np.cos(k_x - Phi*i)
-                if i==0:
-                    H[i, i+1] = -t_nn*np.exp(1j*k_y)
-                    H[i, abs(q_bands)-1] = -t_nn*np.exp(-1j*k_y)
-                elif i==abs(q_bands)-1:
-                    H[i, i-1] = -t_nn*np.exp(-1j*k_y)
-                    H[i, 0] = -t_nn*np.exp(1j*k_y)
-                else:
-                    H[i, i+1] = -t_nn*np.exp(1j*k_y)
-                    H[i, i-1] = -t_nn*np.exp(-1j*k_y)
-        
-        elif hop == 'nnn':
-            for i in range(abs(q_bands)):
-                H[i, i] = -2*t_nn*np.cos(k_x - Phi*i)
-                if i==0:
-                    H[i, i+1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
-                    H[i, abs(q_bands)-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(q_bands-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
-                elif i==abs(q_bands)-1:
-                    H[i, i-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(i-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
-                    H[i, 0] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
-                else:
-                    H[i, i+1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
-                    H[i, i-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(i-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
+        for i in range(abs(q_bands)):
+            H[i, i] = -2*t_nn*np.cos(k_x - Phi*i)
+            if i==0:
+                H[i, i+1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
+                H[i, abs(q_bands)-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(q_bands-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
+            elif i==abs(q_bands)-1:
+                H[i, i-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(i-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
+                H[i, 0] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
+            else:
+                H[i, i+1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*i + 1)*Phi/2)))*np.exp(1j*k_y)
+                H[i, i-1] = -(t_nn + (2*t_nnn*np.cos(k_x - (2*(i-1) + 1)*Phi/2)))*np.exp(-1j*k_y)
     
     eigenvals, eigenvecs = np.linalg.eigh(H)
     
@@ -313,7 +240,7 @@ def h_k_reduced(k_x, k_y, q_test, q_bands, hop = 'nn', p_test=1, t_nn=1, t_nnn=0
     
     return(eigenvalues, eigenvectors)
 
-def H_F_exact(k_x, k_y, q_a, q_b, q, T_a, T_b, hop = 'nn', t_nn=1, t_nnn = 0.2):
+def H_F_exact(k_x, k_y, q_a, q_b, q, T_a, T_b, t_nn=1, t_nnn = 0.2):
     '''
         Builds the q by q Floquet Hamiltonian for periodic switching between fluxes 1/q_a and 1/q_b
     
@@ -336,10 +263,6 @@ def H_F_exact(k_x, k_y, q_a, q_b, q, T_a, T_b, hop = 'nn', t_nn=1, t_nnn = 0.2):
                 The period for which alpha = 1/q_a for a flux switching routine with total period T = T_a + T_b.
             T_b : float
                 The period for which alpha = 1/q_b for a flux switching routine with total period T = T_a + T_b.
-            hop : str, optional
-                Should be either 'nn' to specify that only nearest neighbor hopping should be included or 
-                'nnn' to specify that both nearest and next-nearest neighbor hopping should be included. 
-                Defaults to 'nn'.
             t_nn : float, optional
                 The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
                 lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
@@ -357,8 +280,8 @@ def H_F_exact(k_x, k_y, q_a, q_b, q, T_a, T_b, hop = 'nn', t_nn=1, t_nnn = 0.2):
             eigenvectors are oriented along the columns of the 2D array.
     '''
     T = T_a + T_b
-    eigval_a, eigvec_a = h_k_reduced(k_x, k_y, q_a, q, hop, t_nn, t_nnn)
-    eigval_b, eigvec_b = h_k_reduced(k_x, k_y, q_b, q, hop, t_nn, t_nnn)
+    eigval_a, eigvec_a = h_k_reduced(k_x, k_y, q_a, q, t_nn, t_nnn)
+    eigval_b, eigvec_b = h_k_reduced(k_x, k_y, q_b, q, t_nn, t_nnn)
         
     D_a = np.identity(q) * np.exp(-1j*T_a*eigval_a)
     D_b = np.identity(q) * np.exp(-1j*T_b*eigval_b)
@@ -801,4 +724,5 @@ def Chern_numbers(N, q, q_1, q_2, T_1, T_2, Hamiltonian, hop = 'nn'):
             for ky_val in k_y_reduced:
                 c += Berry_curv(N, [kx_val, ky_val], mu, q_1, q_2, q, T_1, T_2, Hamiltonian, hop_type=hop)/(2j*np.pi)
         Chern_num_list.append(c)
+
     return(Chern_num_list)
