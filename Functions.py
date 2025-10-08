@@ -312,7 +312,7 @@ def H_F_exact(k_x, k_y, q_a, q_b, q, T_a, T_b, t_nn=1, t_nnn = 0.2):
     
     return(quasienergies, eigenvectors)
     
-def h_k_approx_Floquet(k_x, k_y, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t=1):
+def h_k_approx_Floquet(k_x, k_y, q_1, q_2, t_1, t_2, t=1, p_1=1, p_2=1):
     """
         Builds the effective Floquet Hamiltonian approximated up to the first-order correction of the Baker-
         Campbell-Haussdorf Formula in the k-space basis when alpha switches between p_1/q_1 and p_2/q_2 in a
@@ -337,16 +337,16 @@ def h_k_approx_Floquet(k_x, k_y, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t=1):
             t_2 : float
                 The fraction T_2/T, where T_2 is the period during which the dimensionless flux per unit 
                 cell is alpha_2. 
+            t : int, optional
+                The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+                lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
+                between 0 and 1.
             p_1 : int, optional
                 The numerator of the dimensionless measure of magnetic flux per unit cell alpha_1. Defaults
                 to 1.
             p_2 : int, optional
                 The numerator of the dimensionless measure of magnetic flux per unit cell alpha_2. Defaults
                 to 1.
-            t : int, optional
-                The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
-                lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
-                between 0 and 1.
                 
         Returns
         -------
@@ -466,7 +466,7 @@ def H_F_real(N, q_1, q_2, T_1, T_2, t_nn = 1, t_nnn = 0.2, p_1 = 1, p_2 = 1):
     quasiE = (1j/T)*np.log(eigenvalues)*1000
     return(quasiE)
 
-def H_chiral(N, k_x, q, p=1, t_nn=1, t_nnn=0.2):
+def H_chiral(N, k_x, q, t_nn=1, t_nnn=0.2, p=1):
     """
         Builds a Hamiltonian which simulates a system with periodic boundary conditions in the x-direction
         and open boundary conditions in the y-direction, allowing for chiral edge states to be hosted by
@@ -482,8 +482,6 @@ def H_chiral(N, k_x, q, p=1, t_nn=1, t_nnn=0.2):
             operators in the Hamiltonian.
         q : int
             The denominator of the dimensionless measure of magnetic flux per unit cell alpha.
-        p : int, optional
-            The numerator of the dimensionless measure of magnetic flux per unit cell alpha_1. Defaults to 1.
         t_nn : float, optional
             The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
             lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
@@ -492,6 +490,8 @@ def H_chiral(N, k_x, q, p=1, t_nn=1, t_nnn=0.2):
             The next-nearest neighbor hopping integral, providing a measure for how likely an electron on the 
             lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in should be 
             between 0 and 1.
+        p : int, optional
+            The numerator of the dimensionless measure of magnetic flux per unit cell alpha_1. Defaults to 1.
             
         Returns
         -------
@@ -514,7 +514,7 @@ def H_chiral(N, k_x, q, p=1, t_nn=1, t_nnn=0.2):
 
     return(H)
 
-def H_F_k_chiral(N, k_x, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t_nn=1, t_nnn=0.2):
+def H_F_k_chiral(N, k_x, q_1, q_2, T_1, T_2, t_nn=1, t_nnn=0.2, p_1=1, p_2=1):
     """
         Builds the (approximate) effective Floquet Hamiltonian for flux switching between p_1/q_1 and p_2/q_2 for a square lattice
         with a periodic boundary condition only along the x-direction (a cylindrical square lattice).
@@ -531,17 +531,11 @@ def H_F_k_chiral(N, k_x, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t_nn=1, t_nnn=0.2):
             The denominator of the dimensionless measure of magnetic flux per unit cell alpha_1.
         q_2 : int
             The denominator of the dimensionless measure of magnetic flux per unit cell alpha_2.
-        t_1 : float
-            The fraction T_1/T, where T is one full period T_1 + T_2 of the switching routine and T_1
-            is the period during which the dimensionless flux per unit cell is alpha_1. Should be a 
-            value between 0 and 1.
-        t_2 : float
-            The fraction T_2/T, where T_2 is the period during which the dimensionless flux per unit 
-            cell is alpha_2. 
-        p_1 : int, optional
-            The numerator of the dimensionless measure of magnetic flux per unit cell alpha_1. Defaults to 1.
-        p_2 : int, optional
-            The numerator of the dimensionless measure of magnetic flux per unit cell alpha_2. Defaults to 1.
+        T_1 : float
+            The period for which alpha = p_1/q_1 for a flux switching routine with total period T = T_1 + T_2.
+            set to None.
+        T_2 : float
+            The period for which alpha = p_2/q_2 for a flux switching routine with total period T = T_1 + T_2.
         t_nn : float, optional
             The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
             lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
@@ -550,6 +544,10 @@ def H_F_k_chiral(N, k_x, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t_nn=1, t_nnn=0.2):
             The next-nearest neighbor hopping integral, providing a measure for how likely an electron on the 
             lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in should be 
             between 0 and 1.
+        p_1 : int, optional
+            The numerator of the dimensionless measure of magnetic flux per unit cell alpha_1. Defaults to 1.
+        p_2 : int, optional
+            The numerator of the dimensionless measure of magnetic flux per unit cell alpha_2. Defaults to 1.
             
         Returns
         -------
@@ -557,8 +555,8 @@ def H_F_k_chiral(N, k_x, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t_nn=1, t_nnn=0.2):
             A 1D array containing the quasienergies of the Floquet Hamiltonian for a cylindrical lattice geometry supporting chiral edge modes.
     """
     T = T_1 + T_2
-    e_1, v_1, H_1 = H_chiral(N, k_x, q_1, t_nn, t_nnn)
-    e_2, v_2, H_2 = H_chiral(N, k_x, q_2, t_nn, t_nnn)
+    e_1, v_1, H_1 = H_chiral(N, k_x, q_1, t_nn, t_nnn, p_1)
+    e_2, v_2, H_2 = H_chiral(N, k_x, q_2, t_nn, t_nnn, p_2)
     
     D_1 = np.exp(-1j*T_1*e_1) * np.identity(N)
     D_2 = np.exp(-1j*T_2*e_2) * np.identity(N)
@@ -756,4 +754,5 @@ def Chern_numbers(N, q, q_1, q_2, T_1, T_2, Hamiltonian, t_nn=1, t_nnn=0.2):
         Chern_num_list.append(c)
 
     return(Chern_num_list)
+
 
