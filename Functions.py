@@ -110,7 +110,7 @@ def H_real(size, alpha, t_nn = 1, t_nnn = 0.2, E_0 = 0):
     
     return(eigenvalues)
 
-def H_k(k_x, k_y, q, p = 1, t_nn = 1, t_nnn = 0.2):
+def H_k(k_x, k_y, q, t_nn = 1, t_nnn = 0.2, p = 1):
     """
         Outputs the energy eigenvalues and eigenvectors of the q-dimensional Hamiltonian in the k-space 
         basis.
@@ -126,8 +126,6 @@ def H_k(k_x, k_y, q, p = 1, t_nn = 1, t_nnn = 0.2):
         q : int
             The denominator of the dimensionless measure of magnetic flux alpha. Also sets the size of 
             the Hamiltonian in the k-space basis.
-        p : int, optional
-            The numerator of the dimensionless measure of magnetic flux alpha. Defaults to 1
         t_nn : float, optional
             The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
             lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
@@ -136,6 +134,8 @@ def H_k(k_x, k_y, q, p = 1, t_nn = 1, t_nnn = 0.2):
             The next-nearest neighbor hopping integral, providing a measure for how likely an electron on 
             the lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in 
             should be between 0 and 1.
+        p : int, optional
+            The numerator of the dimensionless measure of magnetic flux alpha. Defaults to 1
         
         Returns
         -------
@@ -418,7 +418,7 @@ def h_k_approx_Floquet(k_x, k_y, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t=1):
     
     return(quasienergies, eigenvectors)
 
-def H_F_real(N, q_1, q_2, T_1, T_2, hop_type = 'nn', t_nn = 1, t_nnn = 0.2, p_1 = 1, p_2 = 1):
+def H_F_real(N, q_1, q_2, T_1, T_2, t_nn = 1, t_nnn = 0.2, p_1 = 1, p_2 = 1):
     """
         Builds the Floquet Hamiltonian in real space for an electron on an NxN square lattice with magnetic flux per plaquette which
         periodically switches between p_1/q_1 for time T_1 and p_2/q_2 for time T_2.
@@ -435,10 +435,6 @@ def H_F_real(N, q_1, q_2, T_1, T_2, hop_type = 'nn', t_nn = 1, t_nnn = 0.2, p_1 
             The period for which alpha = 1/q_1 for a flux switching routine with total period T = T_1 + T_2.
         T_2 : float
             The period for which alpha = 1/q_2 for a flux switching routine with total period T = T_1 + T_2.
-        hop_type : str, optional
-            Should be either 'nn' to specify that only nearest neighbor hopping should be included or 
-            'nnn' to specify that both nearest and next-nearest neighbor hopping should be included. 
-            Defaults to 'nn'.
         t_nn : float, optional
             The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
             lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
@@ -463,14 +459,14 @@ def H_F_real(N, q_1, q_2, T_1, T_2, hop_type = 'nn', t_nn = 1, t_nnn = 0.2, p_1 
     alpha_1 = p_1/q_1
     alpha_2 = p_2/q_2
     
-    H_1 = np.array(H_real(N, alpha_1, t_nn, t_nnn, hop = hop_type))/1000
-    H_2 = np.array(H_real(N, alpha_2, t_nn, t_nnn, hop = hop_type))/1000
-    Trot_mtx = expm(-1j*H_1*T_1) @ expm(-1j*H_2*T_2)
+    H_1 = np.array(H_real(N, alpha_1, t_nn, t_nnn))/1000
+    H_2 = np.array(H_real(N, alpha_2, t_nn, t_nnn))/1000
+    Trot_mtx = expm(-1j*H_1*T_2) @ expm(-1j*H_2*T_1)
     eigenvalues, eigenvectors = np.linalg.eig(Trot_mtx)
     quasiE = (1j/T)*np.log(eigenvalues)*1000
     return(quasiE)
 
-def H_chiral(N, k_x, q, p=1, t=1):
+def H_chiral(N, k_x, q, p=1, t_nn=1, t_nnn=0.2):
     """
         Builds a Hamiltonian which simulates a system with periodic boundary conditions in the x-direction
         and open boundary conditions in the y-direction, allowing for chiral edge states to be hosted by
@@ -488,10 +484,14 @@ def H_chiral(N, k_x, q, p=1, t=1):
             The denominator of the dimensionless measure of magnetic flux per unit cell alpha.
         p : int, optional
             The numerator of the dimensionless measure of magnetic flux per unit cell alpha_1. Defaults to 1.
-        t : float, optional
+        t_nn : float, optional
             The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
-            lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be between 
-            0 and 1.
+            lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
+            between 0 and 1.
+        t_nnn : float, optional
+            The next-nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+            lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in should be 
+            between 0 and 1.
             
         Returns
         -------
@@ -503,19 +503,18 @@ def H_chiral(N, k_x, q, p=1, t=1):
     if q == 0:
         Phi = 0
     else:
-        Phi = 2*np.pi*p/q
+        Phi = 2*np.pi/q
         
-    for n in range(N):
-        H[n,n] += -t*np.exp(1j*(k_x - Phi*n)) - t*np.exp(-1j*(k_x - Phi*n))
-        if n < N-1:
-            H[n,n+1] += -t
-            H[n+1,n] += -t
+    for n in range(N-1):
+        H[n,n] += -2*t*np.cos(k_x - Phi*n)
+        H[n,n+1] += -t - 2*t_nnn*np.cos(k_x - (2*n + 1)*Phi/2)
+        H[n+1,n] += -t - 2*t_nnn*np.cos(k_x - (2*n + 1)*Phi/2)
     
-    #Only hopping down is allowed along the top
-    H[q-1, q-2] += -t
-    return(H)  
+    H[N-1, N-1] = -2*t*np.cos(k_x - Phi*(N-1)) # The sum does not add the last diagonal term for hopping in the x-direction along n = N-1
 
-def H_F_k_chiral(N, k_x, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t=1):
+    return(H)
+
+def H_F_k_chiral(N, k_x, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t_nn=1, t_nnn=0.2):
     """
         Builds the (approximate) effective Floquet Hamiltonian for flux switching between p_1/q_1 and p_2/q_2 for a square lattice
         with a periodic boundary condition only along the x-direction (a cylindrical square lattice).
@@ -543,25 +542,41 @@ def H_F_k_chiral(N, k_x, q_1, q_2, t_1, t_2, p_1=1, p_2=1, t=1):
             The numerator of the dimensionless measure of magnetic flux per unit cell alpha_1. Defaults to 1.
         p_2 : int, optional
             The numerator of the dimensionless measure of magnetic flux per unit cell alpha_2. Defaults to 1.
-        t : float, optional
+        t_nn : float, optional
             The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
-            lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be between 
-            0 and 1.
+            lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
+            between 0 and 1.
+        t_nnn : float, optional
+            The next-nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+            lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in should be 
+            between 0 and 1.
             
         Returns
         -------
         ndarray
-            A 2D array containing the elements of the N by N Hamiltonian for a square lattice which is 
-            infinite along the x-direction and contains N sites along the y-direction.
+            A 1D array containing the quasienergies of the Floquet Hamiltonian for a cylindrical lattice geometry supporting chiral edge modes.
     """
-    H_1 = t_1*H_chiral(N, k_x, q_1, p_1, t)
-    H_2 = t_2*H_chiral(N, k_x, q_2, p_2, t)
-    H_F = H_1 + H_2
-    return(H_F)
+    T = T_1 + T_2
+    e_1, v_1, H_1 = H_chiral(N, k_x, q_1, t_nn, t_nnn)
+    e_2, v_2, H_2 = H_chiral(N, k_x, q_2, t_nn, t_nnn)
+    
+    D_1 = np.exp(-1j*T_1*e_1) * np.identity(N)
+    D_2 = np.exp(-1j*T_2*e_2) * np.identity(N)
+    
+    U_1 = v_1 @ D_1 @ np.transpose(np.conj(v_1))
+    U_2 = v_2 @ D_2 @ np.transpose(np.conj(v_2))
+    
+    M = U_1 @ U_2
+    eigval_M, eigvec_M = np.linalg.eig(M)
+    
+    D_M = np.log(eigval_M) * np.identity(N)
+    H_F = (1j/T) * eigvec_M @ D_M @ np.transpose(np.conj(eigvec_M))
+    eigenvalues, eigenvectors = np.linalg.eigh(H_F)
+    return(eigenvalues)
 
-def U_n(N, k, mu, n, q, q_1, q_2, T_1, T_2, Hamiltonian, hop_type='nn'):
+def U_n(N, k, mu, n, q, q_1, q_2, T_1, T_2, Hamiltonian, t_nn=1, t_nnn=0.2):
     '''
-        Outputs either the 1st or 2nd link variable for the mu-th band evaluated at some point in k-space.
+        Outputs either the 1st or 2nd link variable for the mu-th band evaluated at some point k in k-space.
         
         Parameters
         ----------
@@ -577,21 +592,27 @@ def U_n(N, k, mu, n, q, q_1, q_2, T_1, T_2, Hamiltonian, hop_type='nn'):
             If q_1 and q_2 are given, q is the size of the Floquet Hamiltonian for 1/q_1, 1/q_2 flux switching. If q_1 == None, this is 
             the denominator of static flux alpha = 1/q.
         q_1 : int
-            The denominator of the dimensionless measure of magnetic flux per unit cell alpha_1 for 1/q_1, 1/q_2 flux switching.
+            The denominator of the dimensionless measure of magnetic flux per unit cell alpha_1 for 1/q_1, 1/q_2 flux switching. If not using Floquet Hamiltonian,
+            set to None.
         q_2 : int
-            The denominator of the dimensionless measure of magnetic flux per unit cell alpha_2 for 1/q_1, 1/q_2 flux switching.
+            The denominator of the dimensionless measure of magnetic flux per unit cell alpha_2 for 1/q_1, 1/q_2 flux switching. If not using Floquet Hamiltonian,
+            set to None.
         T_1 : float
             The period for which alpha = 1/q_1 for a flux switching routine with total period T = T_1 + T_2. If not using Floquet Hamiltonian,
             set to None.
         T_2 : float
-            The period for which alpha = 1/q_2 for a flux switching routine with total period T = T_1 + T_2. Ifnot using Floquet Hamiltonian,
+            The period for which alpha = 1/q_2 for a flux switching routine with total period T = T_1 + T_2. If not using Floquet Hamiltonian,
             set to None
         Hamiltonian : function
             The function corresponding to the Hamiltonian matrix for which the Chern numbers of the energy bands should be calculated.
-        hop_type : str, optional
-            Should be either 'nn' to specify that only nearest neighbor hopping should be included or 
-            'nnn' to specify that both nearest and next-nearest neighbor hopping should be included. 
-            Defaults to 'nn'.
+        t_nn : float, optional
+            The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+            lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
+            between 0 and 1.
+        t_nnn : float, optional
+            The next-nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+            lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in should be 
+            between 0 and 1.
         
         Returns
         -------
@@ -605,31 +626,31 @@ def U_n(N, k, mu, n, q, q_1, q_2, T_1, T_2, Hamiltonian, hop_type='nn'):
     if q_1 == None:
         if n==1:
             k_t = np.array(k) + e_1
-            E_k, u_k = Hamiltonian(k[0], k[1], q, hop=hop_type)
-            E_k_t, u_k_t = Hamiltonian(k_t[0], k_t[1], q, hop=hop_type)
+            E_k, u_k = Hamiltonian(k[0], k[1], q, t_nn, t_nnn)
+            E_k_t, u_k_t = Hamiltonian(k_t[0], k_t[1], q, t_nn, t_nnn)
             U1 = np.dot(np.conj(np.array(u_k[:, mu])).T, np.array(u_k_t[:, mu]))/np.abs(np.dot(np.conj(np.array(u_k[:, mu])).T, np.array(u_k_t[:, mu])))
             return(U1)
         elif n==2:
             k_t = np.array(k) + e_2
-            E_k, u_k = Hamiltonian(k[0], k[1], q_1, q_2, q, T_1, T_2, hop=hop_type)
-            E_k_t, u_k_t = Hamiltonian(k_t[0], k_t[1], q_1, q_2, q, T_1, T_2, hop=hop_type)
+            E_k, u_k = Hamiltonian(k[0], k[1], q_1, q_2, q, T_1, T_2, t_nn, t_nnn)
+            E_k_t, u_k_t = Hamiltonian(k_t[0], k_t[1], q_1, q_2, q, T_1, T_2, t_nn, t_nnn)
             U2 = np.dot(np.conj(np.array(u_k[:, mu])).T, np.array(u_k_t[:, mu]))/np.abs(np.dot(np.conj(np.array(u_k[:, mu])).T, np.array(u_k_t[:, mu])))
             return(U2)
     else:
         if n==1:
             k_t = np.array(k) + e_1
-            E_k, u_k = Hamiltonian(k[0], k[1], q_1, q_2, q, T_1, T_2, hop=hop_type)
-            E_k_t, u_k_t = Hamiltonian(k_t[0], k_t[1], q_1, q_2, q, T_1, T_2, hop=hop_type)
+            E_k, u_k = Hamiltonian(k[0], k[1], q_1, q_2, q, T_1, T_2, t_nn, t_nnn)
+            E_k_t, u_k_t = Hamiltonian(k_t[0], k_t[1], q_1, q_2, q, T_1, T_2, t_nn, t_nnn)
             U1 = np.dot(np.conj(np.array(u_k[:, mu])).T, np.array(u_k_t[:, mu]))/np.abs(np.dot(np.conj(np.array(u_k[:, mu])).T, np.array(u_k_t[:, mu])))
             return(U1)
         elif n==2:
             k_t = np.array(k) + e_2
-            E_k, u_k = Hamiltonian(k[0], k[1], q_1, q_2, q, T_1, T_2, hop=hop_type)
-            E_k_t, u_k_t = Hamiltonian(k_t[0], k_t[1], q_1, q_2, q, T_1, T_2, hop=hop_type)
+            E_k, u_k = Hamiltonian(k[0], k[1], q_1, q_2, q, T_1, T_2, t_nn, t_nnn)
+            E_k_t, u_k_t = Hamiltonian(k_t[0], k_t[1], q_1, q_2, q, T_1, T_2, t_nn, t_nnn)
             U2 = np.dot(np.conj(np.array(u_k[:, mu])).T, np.array(u_k_t[:, mu]))/np.abs(np.dot(np.conj(np.array(u_k[:, mu])).T, np.array(u_k_t[:, mu])))
             return(U2)
     
-def Berry_curv(N, k, mu, q, q_1, q_2, T_1, T_2, Hamiltonian, hop_type='nn'):
+def Berry_curv(N, k, mu, q, q_1, q_2, T_1, T_2, Hamiltonian, t_nn=1, t_nnn=0.2):
     '''
         Outputs the Berry curvature at some point in k space specified by k = [k_x, k_y].
         
@@ -658,10 +679,14 @@ def Berry_curv(N, k, mu, q, q_1, q_2, T_1, T_2, Hamiltonian, hop_type='nn'):
             set to None
         Hamiltonian : function
             The function corresponding to the Hamiltonian matrix for which the Chern numbers of the energy bands should be calculated.
-        hop_type : str, optional
-            Should be either 'nn' to specify that only nearest neighbor hopping should be included or 
-            'nnn' to specify that both nearest and next-nearest neighbor hopping should be included. 
-            Defaults to 'nn'.
+        t_nn : float, optional
+            The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+            lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
+            between 0 and 1.
+        t_nnn : float, optional
+            The next-nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+            lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in should be 
+            between 0 and 1.
         
         Returns
         -------
@@ -672,10 +697,11 @@ def Berry_curv(N, k, mu, q, q_1, q_2, T_1, T_2, Hamiltonian, hop_type='nn'):
     e_1 = np.array([2*np.pi/(N), 0])
     e_2 = np.array([0, 2*np.pi/(abs(q)*N)])
     
-    Berry_curv = np.log(U_n(N, [k[0], k[1]], mu, 1, q_1, q_2, q, T_1, T_2, Hamiltonian, hop_type)*U_n(N, np.array([k[0], k[1]]) + e_1, mu, 2, q_1, q_2, q, T_1, T_2, Hamiltonian, hop_type)/(U_n(N, [k[0], k[1]] + e_2, mu, 1, q_1, q_2, q, T_1, T_2, Hamiltonian, hop_type)*U_n(N, [k[0], k[1]], mu, 2, q_1, q_2, q, T_1, T_2, Hamiltonian, hop_type)))
+    Berry_curv = (np.log(U_n(N, [k[0], k[1]], mu, 1, q_1, q_2, q, T_1, T_2, Hamiltonian, t_nn, t_nnn)*U_n(N, np.array([k[0], k[1]]) + e_1, mu, 2, q_1, q_2, q, T_1, T_2, Hamiltonian, t_nn, t_nnn)
+                         /(U_n(N, [k[0], k[1]] + e_2, mu, 1, q_1, q_2, q, T_1, T_2, Hamiltonian, t_nn, t_nnn)*U_n(N, [k[0], k[1]], mu, 2, q_1, q_2, q, T_1, T_2, Hamiltonian, t_nn, t_nnn))))
     return(Berry_curv)
 
-def Chern_numbers(N, q, q_1, q_2, T_1, T_2, Hamiltonian, hop = 'nn'):
+def Chern_numbers(N, q, q_1, q_2, T_1, T_2, Hamiltonian, t_nn=1, t_nnn=0.2):
     '''
         Outputs the Berry curvature at some point in k space specified by k = [k_x, k_y].
         
@@ -700,10 +726,14 @@ def Chern_numbers(N, q, q_1, q_2, T_1, T_2, Hamiltonian, hop = 'nn'):
             set to None
         Hamiltonian : function
             The function corresponding to the Hamiltonian matrix for which the Chern numbers of the energy bands should be calculated.
-        hop_type : str, optional
-            Should be either 'nn' to specify that only nearest neighbor hopping should be included or 
-            'nnn' to specify that both nearest and next-nearest neighbor hopping should be included. 
-            Defaults to 'nn'.
+        t_nn : float, optional
+            The nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+            lattice is to hop to nearest neighbor sites. Defaults to 1. Values passed in should be 
+            between 0 and 1.
+        t_nnn : float, optional
+            The next-nearest neighbor hopping integral, providing a measure for how likely an electron on the 
+            lattice is to hop to next-nearest neighbor sites. Defaults to 0.2. Values passed in should be 
+            between 0 and 1.
         
         Returns
         -------
@@ -722,7 +752,8 @@ def Chern_numbers(N, q, q_1, q_2, T_1, T_2, Hamiltonian, hop = 'nn'):
         c = 0
         for kx_val in k_x_reduced:
             for ky_val in k_y_reduced:
-                c += Berry_curv(N, [kx_val, ky_val], mu, q_1, q_2, q, T_1, T_2, Hamiltonian, hop_type=hop)/(2j*np.pi)
+                c += Berry_curv(N, [kx_val, ky_val], mu, q_1, q_2, q, T_1, T_2, Hamiltonian, t_nn, t_nnn)/(2j*np.pi)
         Chern_num_list.append(c)
 
     return(Chern_num_list)
+
